@@ -83,6 +83,35 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-seri
 .cap-badge.oranje{background:var(--amber-light);color:var(--amber)}
 .cap-badge.rood{background:var(--red-light);color:var(--red)}
 
+/* Login scherm */
+.login-overlay{display:none;position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#3a2518 0%,#5a3e28 60%,#7a5a3a 100%);align-items:center;justify-content:center}
+.login-overlay.actief{display:flex}
+.login-box{background:#fff;border-radius:16px;padding:40px;width:380px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,.3)}
+.login-logo{text-align:center;margin-bottom:24px}
+.login-logo img{height:40px}
+.login-titel{font-size:20px;font-weight:700;color:var(--text);margin-bottom:4px;text-align:center}
+.login-sub{font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:24px}
+.login-field{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.login-field label{font-size:12px;font-weight:500;color:var(--text-muted)}
+.login-field input{padding:10px 12px;border-radius:var(--radius);border:1px solid var(--border);font-size:14px;font-family:inherit;color:var(--text);background:var(--surface)}
+.login-field input:focus{outline:none;border-color:var(--accent)}
+.login-btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px}
+.login-btn:hover{background:#4a3020}
+.login-fout{background:var(--red-light);color:var(--red);font-size:12px;padding:8px 12px;border-radius:var(--radius);margin-bottom:12px;display:none}
+.login-fout.show{display:block}
+.login-link{text-align:center;margin-top:16px;font-size:12px;color:var(--text-muted)}
+.login-link a{color:var(--accent);cursor:pointer;text-decoration:underline}
+.login-spinner{display:none;text-align:center;color:var(--text-muted);font-size:13px;margin-top:8px}
+.topbar-user{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-muted)}
+.topbar-user-email{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.btn-logout{font-size:11px;padding:4px 10px;border-radius:var(--radius);border:1px solid var(--border);background:none;color:var(--text-muted);cursor:pointer;font-family:inherit}
+.btn-logout:hover{background:var(--red-light);color:var(--red);border-color:#f0c0c0}
+.reset-overlay{display:none;position:fixed;inset:0;z-index:1100;background:rgba(26,21,18,.6);align-items:center;justify-content:center}
+.reset-overlay.open{display:flex}
+.reset-box{background:#fff;border-radius:16px;padding:32px;width:380px;max-width:95vw;box-shadow:0 24px 64px rgba(0,0,0,.25)}
+.reset-box h3{font-size:16px;font-weight:600;margin-bottom:6px}
+.reset-box p{font-size:13px;color:var(--text-muted);margin-bottom:20px}
+
 /* Topbar */
 .topbar{background:#fff;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;position:sticky;top:0;z-index:50;border-bottom:1px solid var(--border);box-shadow:0 1px 4px rgba(0,0,0,.06)}
 .logo{display:flex;align-items:center}
@@ -353,6 +382,49 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
 </style>
 </head>
 <body>
+
+<!-- Login scherm -->
+<div class="login-overlay actief" id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo" id="login-logo"></div>
+    <div class="login-titel">JEBO Timmerwerken</div>
+    <div class="login-sub">Bestelling &amp; planning dashboard</div>
+    <div class="login-fout" id="login-fout"></div>
+    <div class="login-field">
+      <label>Gebruikersnaam</label>
+      <input type="text" id="login-email" placeholder="Gebruikersnaam" autocomplete="username">
+    </div>
+    <div class="login-field">
+      <label>Wachtwoord</label>
+      <input type="password" id="login-ww" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="doeLogin()">Inloggen</button>
+    <div class="login-spinner" id="login-spinner">Bezig met inloggen...</div>
+    <div class="login-link">
+      <a onclick="openResetOverlay()">Wachtwoord vergeten?</a>
+    </div>
+  </div>
+</div>
+
+<!-- Wachtwoord reset -->
+<div class="reset-overlay" id="reset-overlay">
+  <div class="reset-box">
+    <h3>Wachtwoord resetten</h3>
+    <p>Vul je e-mailadres in. Je ontvangt een link om een nieuw wachtwoord in te stellen.</p>
+    <div class="login-fout" id="reset-fout"></div>
+    <div class="login-field">
+      <label>E-mailadres</label>
+      <input type="email" id="reset-email" placeholder="jouw@email.nl">
+    </div>
+    <button class="login-btn" onclick="doeReset()" style="margin-bottom:10px">Verstuur resetlink</button>
+    <div style="text-align:center;font-size:12px;color:var(--text-muted)">
+      <a style="color:var(--accent);cursor:pointer;text-decoration:underline" onclick="sluitResetOverlay()">Terug naar inloggen</a>
+    </div>
+    <div id="reset-succes" style="display:none;background:var(--green-light);color:var(--green);font-size:12px;padding:8px 12px;border-radius:var(--radius);margin-top:12px;text-align:center">
+      ✓ Resetlink verstuurd! Controleer je e-mail.
+    </div>
+  </div>
+</div>
 
 <header class="topbar">
   <div class="logo" id="logo-wrap"></div>
@@ -2182,9 +2254,8 @@ document.addEventListener('DOMContentLoaded', function() {
   if (wwEl) wwEl.addEventListener('keydown', function(e) { if(e.key==='Enter') doeLogin(); });
   if (emailEl) emailEl.addEventListener('keydown', function(e) { if(e.key==='Enter') wwEl && wwEl.focus(); });
 
-  // Login uitgeschakeld - start app direct
-  startApp();
-  document.getElementById('topbar-user').style.display='none';
+  // Start: check session
+  checkSessie();
 });
 </script>
 </body>
