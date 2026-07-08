@@ -898,18 +898,21 @@ async function sbFetch(tabel, methode='GET', body=null, filter='') {
 
 async function laadVanSupabase() {
   const [b, k] = await Promise.all([
-    sbFetch('bestellingen', 'GET', null, '?order=created_at'),
-    sbFetch('klanten', 'GET', null, '?order=created_at')
+    sbFetch('bestellingen', 'GET', null, '?order=created_at&limit=1000'),
+    sbFetch('klanten', 'GET', null, '?order=created_at&limit=500')
   ]);
+  if (!b) throw new Error('Kon bestellingen niet laden - controleer of de tabel bestaat in Supabase');
+  if (!k) throw new Error('Kon klanten niet laden - controleer of de tabel bestaat in Supabase');
   if (b) bestellingen = b.map(r => ({
     id: r.id, klant: r.klant, type: r.type,
     types: r.types || [r.type],
     typeAantallen: r.type_aantallen || {},
     bestelnr: r.bestelnr || '',
     status: r.status, datum: r.datum,
-    stuks: r.stuks, notitie: r.notitie || '',
+    stuks: r.stuks || 1, notitie: r.notitie || '',
     bijlagen: r.bijlagen || [],
-    productieStap: r.productie_stap || ''
+    productieStap: r.productie_stap || '',
+    spoed: r.spoed || false
   }));
   if (k) klanten = k.map(r => ({
     id: r.id, naam: r.naam, tel: r.tel || '',
@@ -927,7 +930,8 @@ async function slaOpSupabase(tabel, obj) {
     bestelnr: obj.bestelnr || '', status: obj.status,
     datum: obj.datum, stuks: obj.stuks,
     notitie: obj.notitie || '', bijlagen: obj.bijlagen || [],
-    productie_stap: obj.productieStap || ''
+    productie_stap: obj.productieStap || '',
+    spoed: obj.spoed || false
   } : {
     id: obj.id, naam: obj.naam, tel: obj.tel || '',
     email: obj.email || '', plaats: obj.plaats || '',
@@ -1328,7 +1332,7 @@ function renderTabel(){
         }
       </td>
       <td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.notitie||''}">${b.notitie||'\u2014'}${b.bijlagen&&b.bijlagen.length?`<span class="bijlage-count" title="${b.bijlagen.length} bijlage(n)">&#128206;${b.bijlagen.length}</span>`:''}</td>
-      <td><div class="acties beheerder-only"><button class="icon-btn" title="Bewerken" onclick="openBewerkBestelling('${b.id}')">&#9999;</button><button class="icon-btn danger" title="Verwijderen" onclick="verwijderBestelling('${b.id}')">&#128465;</button></div></td>
+      <td><div class="acties" style="display:${(huidigeRol==='medewerker')?'none':'flex'}"><button class="icon-btn" title="Bewerken" onclick="openBewerkBestelling('${b.id}')">&#9999;</button><button class="icon-btn danger" title="Verwijderen" onclick="verwijderBestelling('${b.id}')">&#128465;</button></div></td>
     </tr>`;
   }).join('');
 }
@@ -1388,6 +1392,7 @@ function openBestelModalMetDatum(ds) {
 }
 
 function openBestelModal(){
+  if(huidigeRol==='medewerker'){toon('Geen toegang: u mag geen bestellingen toevoegen');return;}
   bewerkBestellingId=null;
   document.getElementById('modal-titel').textContent='Nieuwe bestelling';
   vulKlantenSelect();setTypes([],{});
@@ -1409,6 +1414,7 @@ function openBestelModal(){
   document.getElementById('bestel-overlay').classList.add('open');
 }
 function openBewerkBestelling(id){
+  if(huidigeRol==='medewerker'){toon('Geen toegang: u mag bestellingen niet bewerken');return;}
   const b=bestellingen.find(x=>x.id===id);if(!b)return;
   bewerkBestellingId=id;
   document.getElementById('modal-titel').textContent='Bestelling bewerken';
@@ -1450,12 +1456,37 @@ function pasDashboardAanOpRol(rol) {
   huidigeRol = rol;
   const isBeheerder = rol === 'admin' || rol === 'beheerder';
   const isAdmin = rol === 'admin';
-  document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = isAdmin ? '' : 'none'; });
-  document.querySelectorAll('.beheerder-only').forEach(function(el){ el.style.display = isBeheerder ? '' : 'none'; });
+
+  // Accounts tab - alleen admin
   const accountsTab = document.getElementById('accounts-tab');
   if (accountsTab) accountsTab.style.display = isAdmin ? '' : 'none';
+
+  // Wachtwoord knop - alleen admin
   const wwKnop = document.getElementById('ww-knop');
   if (wwKnop) wwKnop.style.display = isAdmin ? '' : 'none';
+
+  // Bestelling toevoegen knop - verberg voor medewerker
+  document.querySelectorAll('button[onclick="openBestelModal()"]').forEach(function(btn){
+    btn.style.display = isBeheerder ? '' : 'none';
+  });
+
+  // Bewerk/verwijder knoppen in tabel - verberg voor medewerker
+  // (wordt ook in renderTabel afgehandeld)
+  document.querySelectorAll('.acties.beheerder-only').forEach(function(el){
+    el.style.display = isBeheerder ? '' : 'none';
+  });
+
+  // Opdrachtgever knoppen verbergen voor medewerker
+  if (!isBeheerder) {
+    document.querySelectorAll('#klanten-grid .icon-btn').forEach(function(btn){
+      btn.style.display = 'none';
+    });
+  }
+
+  // Herrender tabel zodat acties-kolom correct is
+  if (document.getElementById('tab-bestellingen').classList.contains('active')) {
+    sorteer(sortVeld);
+  }
 }
 
 function laadRolVanGebruiker(email) {
@@ -1486,17 +1517,21 @@ function renderAccounts() {
       var zelfEmail = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
       var rolLabel = { admin: 'Admin', beheerder: 'Beheerder', medewerker: 'Medewerker' };
       var rolKleur = { admin: 'var(--red)', beheerder: 'var(--blue)', medewerker: 'var(--green)' };
-      if (!data || !data.length) {
+      // Verberg admin accounts uit de lijst
+      var zelfEmail2 = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
+      var zichtbaar = (data || []).filter(function(u) {
+        return (u.rol||'').toLowerCase() !== 'admin' && u.email.toLowerCase() !== zelfEmail2;
+      });
+      if (!zichtbaar.length) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nog geen gebruikers toegevoegd</td></tr>';
         return;
       }
-      tbody.innerHTML = data.map(function(u) {
-        var isZelf = u.email.toLowerCase() === zelfEmail;
+      tbody.innerHTML = zichtbaar.map(function(u) {
         return '<tr>' +
-          '<td>' + u.email + (isZelf ? ' <span style="font-size:11px;color:var(--text-subtle)">(jij)</span>' : '') + '</td>' +
+          '<td>' + u.email + '</td>' +
           '<td><span class="badge" style="background:' + (rolKleur[u.rol]||'var(--gray)') + '22;color:' + (rolKleur[u.rol]||'var(--gray)') + '">' + (rolLabel[u.rol]||u.rol) + '</span></td>' +
           '<td><span style="font-size:12px;color:var(--text-muted)">Actief</span></td>' +
-          '<td>' + (!isZelf ? '<button class="icon-btn danger" data-email="' + u.email + '" title="Verwijderen">&#128465;</button>' : '') + '</td>' +
+          '<td><button class="icon-btn danger" data-email="' + u.email + '" title="Verwijderen">&#128465;</button></td>' +
           '</tr>';
       }).join('');
       tbody.querySelectorAll('.icon-btn.danger[data-email]').forEach(function(btn) {
@@ -1604,6 +1639,7 @@ function wijzigStatusTabel(select){
 }
 
 function slaBestellingOp(){
+  if(huidigeRol==='medewerker'){toon('Geen toegang');return;}
   const klant=document.getElementById('f-klant').value;if(!klant){alert('Selecteer een opdrachtgever.');return}
   const types=getTypes();
   if(!types.length){alert('Vink minimaal 1 type aan.');return}
@@ -1642,6 +1678,7 @@ function slaBestellingOp(){
   sla(SLEUTEL_B,bestellingen);sluitBestelModal();refresh();
 }
 function verwijderBestelling(id){
+  if(huidigeRol==='medewerker'){toon('Geen toegang: u mag geen bestellingen verwijderen');return;}
   const b=bestellingen.find(x=>x.id===id);
   bevestig('Bestelling verwijderen?','"'+b.id+' — '+b.klant+'" definitief verwijderen?',()=>{
     verwijderItem('bestellingen',id);
@@ -1687,6 +1724,7 @@ function renderKlanten(){
   }).join('');
 }
 function openKlantModal(){
+  if(huidigeRol==='medewerker'){toon('Geen toegang: u mag geen opdrachtgevers beheren');return;}
   bewerkKlantId=null;
   document.getElementById('klant-modal-titel').textContent='Opdrachtgever toevoegen';
   ['kf-naam','kf-tel','kf-email','kf-plaats','kf-notitie'].forEach(id=>document.getElementById(id).value='');
@@ -1696,6 +1734,7 @@ function openKlantModal(){
   document.getElementById('klant-overlay').classList.add('open');
 }
 function openBewerkKlant(id){
+  if(huidigeRol==='medewerker'){toon('Geen toegang');return;}
   const k=klanten.find(x=>x.id===id);if(!k)return;
   bewerkKlantId=id;
   document.getElementById('klant-modal-titel').textContent='Opdrachtgever bewerken';
@@ -1720,6 +1759,7 @@ function slaKlantOp(){
   sla(SLEUTEL_K,klanten);sluitKlantModal();renderKlanten();vulKlantenSelect();vulKlantFilter();vulAgendaKlantFilter();
 }
 function verwijderKlant(id){
+  if(huidigeRol==='medewerker'){toon('Geen toegang');return;}
   const k=klanten.find(x=>x.id===id);
   bevestig('Opdrachtgever verwijderen?','"'+k.naam+'" definitief verwijderen?',()=>{
     verwijderItem('klanten',id);klanten=klanten.filter(x=>x.id!==id);sla(SLEUTEL_K,klanten);renderKlanten();toon('Opdrachtgever verwijderd');
@@ -2229,10 +2269,11 @@ if(GEBRUIK_SUPABASE){
   laadVanSupabase().then(()=>{
     document.body.removeChild(laadBericht);
     vulAgendaKlantFilter();initCapInstellingen();refresh();renderAgenda();toonDagDetail(geselecteerdeDag);
-  }).catch(()=>{
-    laadBericht.textContent='Kon niet verbinden met Supabase. Lokale data wordt gebruikt.';
-    setTimeout(()=>document.body.removeChild(laadBericht),3000);
-    vulAgendaKlantFilter();initCapInstellingen();refresh();renderAgenda();toonDagDetail(geselecteerdeDag);
+  }).catch((err)=>{
+    console.error('Supabase laad fout:', err);
+    laadBericht.innerHTML = '<div style="color:var(--red);font-weight:500">Fout bij laden data</div>' +
+      '<div style="font-size:12px;margin-top:6px;color:var(--text-muted)">Controleer of de Supabase tabellen bestaan.<br>Zie console voor details.</div>' +
+      '<button onclick="this.parentElement.parentElement.removeChild(this.parentElement);startApp();" style="margin-top:10px;padding:6px 12px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px">Doorgaan met lege data</button>';
   });
 } else {
   vulAgendaKlantFilter();initCapInstellingen();refresh();renderAgenda();toonDagDetail(geselecteerdeDag);
