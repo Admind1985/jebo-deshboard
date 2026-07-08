@@ -370,6 +370,7 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
   <div class="nav-tab" data-tab="geschiedenis" onclick="switchTab('geschiedenis',this)">&#128196; Geschiedenis</div>
   <div class="nav-tab" data-tab="klanten" onclick="switchTab('klanten',this)">&#128101; Opdrachtgevers</div>
   <div class="nav-tab active" data-tab="agenda" onclick="switchTab('agenda',this)">&#128197; Planning</div>
+  <div class="nav-tab" data-tab="accounts" id="accounts-tab" onclick="switchTab('accounts',this)" style="display:none">&#128272; Accounts</div>
 </nav>
 
 <main class="main">
@@ -410,7 +411,7 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
       <button class="btn btn-secondary" onclick="exporteerData()" title="Exporteer alle data als backup-bestand">&#128190; Backup</button>
       <button class="btn btn-secondary" onclick="document.getElementById('import-input').click()" title="Herstel data uit backup-bestand">&#128196; Herstel</button>
       <input type="file" id="import-input" accept=".json" style="display:none" onchange="importeerData(this)">
-      <button class="btn btn-primary" onclick="openBestelModal()">+ Bestelling toevoegen</button>
+      <button class="btn btn-primary" onclick="openBestelModal()" class="beheerder-only">+ Bestelling toevoegen</button>
     </div>
   </div>
   <div class="card tabel-scroll">
@@ -458,6 +459,24 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
         <th style="width:90px">Acties</th>
       </tr></thead>
       <tbody id="geschiedenis-body"></tbody>
+    </table>
+  </div>
+</section>
+
+<section id="tab-accounts" class="tab-panel">
+  <div class="toolbar">
+    <span class="toolbar-title">Gebruikersbeheer</span>
+    <button class="btn btn-primary" onclick="openGebruikerModal()">+ Gebruiker uitnodigen</button>
+  </div>
+  <div class="card tabel-scroll">
+    <table>
+      <thead><tr>
+        <th>E-mailadres</th>
+        <th style="width:160px">Rol</th>
+        <th style="width:120px">Status</th>
+        <th style="width:100px">Acties</th>
+      </tr></thead>
+      <tbody id="accounts-body"><tr class="empty-row"><td colspan="4">Laden...</td></tr></tbody>
     </table>
   </div>
 </section>
@@ -554,7 +573,7 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
       </div>
       <div class="field"><label>Ordernummer <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(intern)</span></label><input type="text" id="f-id" placeholder="bijv. B-007"></div>
       <div class="field"><label>Bestelnummer <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(klant)</span></label><input type="text" id="f-bestelnr" placeholder="bijv. 2026-042"></div>
-      <div class="field full">
+      <div class="field full beheerder-only">
         <label class="type-check-label" id="lbl-spoed" style="display:inline-flex;border-color:#dc2626;gap:10px;cursor:pointer">
           <input type="checkbox" id="f-spoed" style="display:none">
           <span style="font-size:15px">⚡</span>
@@ -714,6 +733,48 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="document.getElementById('ww-overlay').classList.remove('open')">Annuleren</button>
       <button class="btn btn-primary" onclick="slaAppWachtwoordOp()">&#10003; Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Gebruiker uitnodigen -->
+<div class="overlay" id="gebruiker-overlay" onclick="overlayClick(event,'gebruiker-overlay')">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h3 id="gebruiker-modal-titel">Gebruiker uitnodigen</h3>
+      <button class="modal-close" onclick="sluitGebruikerModal()">&#10005;</button>
+    </div>
+    <div class="login-fout" id="gebruiker-fout"></div>
+    <div class="form-grid single">
+      <div class="field">
+        <label>E-mailadres</label>
+        <input type="email" id="gu-email" placeholder="naam@bedrijf.nl">
+      </div>
+      <div class="field">
+        <label>Wachtwoord <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(tijdelijk, gebruiker kan dit wijzigen)</span></label>
+        <input type="password" id="gu-ww" placeholder="Minimaal 6 tekens">
+      </div>
+      <div class="field">
+        <label>Rol</label>
+        <select id="gu-rol" onchange="updateRolUitleg()">
+          <option value="beheerder">Beheerder — kan alles bewerken</option>
+          <option value="medewerker">Medewerker — kan alleen status wijzigen</option>
+        </select>
+      </div>
+      <div class="field" id="gu-rol-uitleg" style="background:var(--surface-alt);border-radius:var(--radius);padding:10px 12px">
+        <div style="font-size:12px;color:var(--text-muted)" id="gu-rol-tekst">
+          ✓ Bestellingen toevoegen, bewerken en verwijderen<br>
+          ✓ Opdrachtgevers beheren<br>
+          ✓ Alle tabbladen zien
+        </div>
+      </div>
+    </div>
+    <div id="gebruiker-succes" style="display:none;background:var(--green-light);color:var(--green);font-size:12px;padding:8px 12px;border-radius:var(--radius);margin-top:8px">
+      &#10003; Gebruiker aangemaakt! Ze kunnen nu inloggen.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="sluitGebruikerModal()">Annuleren</button>
+      <button class="btn btn-primary" onclick="maakGebruikerAan()">&#10003; Aanmaken</button>
     </div>
   </div>
 </div>
@@ -943,6 +1004,7 @@ function switchTab(naam,el){
   if(naam==='overzicht')renderOverzicht();
   if(naam==='klanten')renderKlanten();
   if(naam==='geschiedenis'){vulGeschiedenisKlantFilter();renderGeschiedenis();}
+  if(naam==='accounts')renderAccounts();
   if(naam==='agenda'){vulAgendaKlantFilter();initCapInstellingen();renderAgenda();if(geselecteerdeDag)toonDagDetail(geselecteerdeDag)}
 }
 
@@ -1157,6 +1219,8 @@ function renderTabel(){
   }));
   const tbody=document.getElementById('tabel-body');
   if(!gefilterd.length){tbody.innerHTML='<tr class="empty-row"><td colspan="9">Geen bestellingen gevonden</td></tr>';return}
+  // Apply role-based visibility
+  const isBeheerder2 = huidigeRol === 'admin' || huidigeRol === 'beheerder';
   tbody.innerHTML=gefilterd.map(b=>{
     const actief=b.status!=='Geleverd'&&b.status!=='Klaar';
     const diff=actief?dagenverschil(b.datum):Infinity;
@@ -1192,7 +1256,7 @@ function renderTabel(){
         }
       </td>
       <td style="font-size:12px;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${b.notitie||''}">${b.notitie||'\u2014'}${b.bijlagen&&b.bijlagen.length?`<span class="bijlage-count" title="${b.bijlagen.length} bijlage(n)">&#128206;${b.bijlagen.length}</span>`:''}</td>
-      <td><div class="acties"><button class="icon-btn" title="Bewerken" onclick="openBewerkBestelling('${b.id}')">&#9999;</button><button class="icon-btn danger" title="Verwijderen" onclick="verwijderBestelling('${b.id}')">&#128465;</button></div></td>
+      <td><div class="acties beheerder-only"><button class="icon-btn" title="Bewerken" onclick="openBewerkBestelling('${b.id}')">&#9999;</button><button class="icon-btn danger" title="Verwijderen" onclick="verwijderBestelling('${b.id}')">&#128465;</button></div></td>
     </tr>`;
   }).join('');
 }
@@ -1300,6 +1364,125 @@ function wijzigProductieStap(select) {
   slaItem('bestellingen', b);
   sla(SLEUTEL_B, bestellingen);
   toon(stap ? 'Productiestap: ' + stap : 'Productiestap gewist');
+}
+
+/* ── Rechten & Rollen ── */
+let huidigeRol = 'beheerder';
+
+const ROL_UITLEG = {
+  beheerder: '&#10003; Bestellingen toevoegen, bewerken en verwijderen<br>&#10003; Opdrachtgevers beheren<br>&#10003; Alle tabbladen zien',
+  medewerker: '&#10003; Status van bestellingen wijzigen<br>&#10007; Bestellingen toevoegen of verwijderen<br>&#10007; Opdrachtgevers bewerken'
+};
+
+function pasDashboardAanOpRol(rol) {
+  huidigeRol = rol;
+  const isBeheerder = rol === 'admin' || rol === 'beheerder';
+  const isAdmin = rol === 'admin';
+  document.querySelectorAll('.admin-only').forEach(function(el){ el.style.display = isAdmin ? '' : 'none'; });
+  document.querySelectorAll('.beheerder-only').forEach(function(el){ el.style.display = isBeheerder ? '' : 'none'; });
+  const accountsTab = document.getElementById('accounts-tab');
+  if (accountsTab) accountsTab.style.display = isAdmin ? '' : 'none';
+  const wwKnop = document.getElementById('ww-knop');
+  if (wwKnop) wwKnop.style.display = isAdmin ? '' : 'none';
+}
+
+function laadRolVanGebruiker(email) {
+  if (!GEBRUIK_SUPABASE) {
+    var rol = (ADMIN_EMAIL && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'beheerder';
+    pasDashboardAanOpRol(rol);
+    return;
+  }
+  sbFetch('gebruikers', 'GET', null, '?email=eq.' + encodeURIComponent(email) + '&select=rol')
+    .then(function(data) {
+      var rol;
+      if (data && data.length > 0) { rol = data[0].rol; }
+      else { rol = (ADMIN_EMAIL && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'beheerder'; }
+      pasDashboardAanOpRol(rol);
+    }).catch(function() { pasDashboardAanOpRol('beheerder'); });
+}
+
+function renderAccounts() {
+  var tbody = document.getElementById('accounts-body');
+  if (!tbody) return;
+  if (!GEBRUIK_SUPABASE) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Supabase vereist voor gebruikersbeheer</td></tr>';
+    return;
+  }
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Laden...</td></tr>';
+  sbFetch('gebruikers', 'GET', null, '?order=created_at')
+    .then(function(data) {
+      var zelfEmail = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
+      var rolLabel = { admin: 'Admin', beheerder: 'Beheerder', medewerker: 'Medewerker' };
+      var rolKleur = { admin: 'var(--red)', beheerder: 'var(--blue)', medewerker: 'var(--green)' };
+      if (!data || !data.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nog geen gebruikers toegevoegd</td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.map(function(u) {
+        var isZelf = u.email.toLowerCase() === zelfEmail;
+        return '<tr>' +
+          '<td>' + u.email + (isZelf ? ' <span style="font-size:11px;color:var(--text-subtle)">(jij)</span>' : '') + '</td>' +
+          '<td><span class="badge" style="background:' + (rolKleur[u.rol]||'var(--gray)') + '22;color:' + (rolKleur[u.rol]||'var(--gray)') + '">' + (rolLabel[u.rol]||u.rol) + '</span></td>' +
+          '<td><span style="font-size:12px;color:var(--text-muted)">Actief</span></td>' +
+          '<td>' + (!isZelf ? '<button class="icon-btn danger" data-email="' + u.email + '" title="Verwijderen">&#128465;</button>' : '') + '</td>' +
+          '</tr>';
+      }).join('');
+      tbody.querySelectorAll('.icon-btn.danger[data-email]').forEach(function(btn) {
+        btn.addEventListener('click', function() { verwijderGebruiker(btn.dataset.email); });
+      });
+    }).catch(function() {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Kon gebruikers niet laden. Maak eerst de tabel aan in Supabase.</td></tr>';
+    });
+}
+
+function openGebruikerModal() {
+  document.getElementById('gu-email').value = '';
+  document.getElementById('gu-ww').value = '';
+  document.getElementById('gu-rol').value = 'beheerder';
+  document.getElementById('gebruiker-fout').classList.remove('show');
+  document.getElementById('gebruiker-succes').style.display = 'none';
+  updateRolUitleg();
+  document.getElementById('gebruiker-overlay').classList.add('open');
+}
+function sluitGebruikerModal() { document.getElementById('gebruiker-overlay').classList.remove('open'); }
+function updateRolUitleg() {
+  var rol = document.getElementById('gu-rol').value;
+  var el = document.getElementById('gu-rol-tekst');
+  if (el) el.innerHTML = ROL_UITLEG[rol] || '';
+}
+
+async function maakGebruikerAan() {
+  var email = document.getElementById('gu-email').value.trim();
+  var ww = document.getElementById('gu-ww').value;
+  var rol = document.getElementById('gu-rol').value;
+  var fout = document.getElementById('gebruiker-fout');
+  var succes = document.getElementById('gebruiker-succes');
+  fout.classList.remove('show'); succes.style.display = 'none';
+  if (!email) { fout.textContent = 'Vul een e-mailadres in.'; fout.classList.add('show'); return; }
+  if (ww.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.'; fout.classList.add('show'); return; }
+  var res = await fetch(SUPABASE_AUTH + '/signup', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, password: ww })
+  });
+  if (!res.ok) {
+    var err = await res.json();
+    fout.textContent = err.error_description || err.msg || 'Kon gebruiker niet aanmaken.';
+    fout.classList.add('show'); return;
+  }
+  await sbFetch('gebruikers', 'POST', [{ email: email, rol: rol }], '?on_conflict=email');
+  succes.style.display = 'block';
+  document.getElementById('gu-email').value = '';
+  document.getElementById('gu-ww').value = '';
+  setTimeout(function() { sluitGebruikerModal(); renderAccounts(); }, 1500);
+  toon('Gebruiker ' + email + ' aangemaakt als ' + rol);
+}
+
+function verwijderGebruiker(email) {
+  bevestig('Gebruiker verwijderen?', '"' + email + '" kan dan niet meer inloggen.', function() {
+    sbFetch('gebruikers', 'DELETE', null, '?email=eq.' + encodeURIComponent(email))
+      .then(function() { renderAccounts(); toon('Gebruiker verwijderd'); });
+  });
 }
 
 function refresh(){
@@ -1817,12 +2000,8 @@ function toonApp(email) {
   document.getElementById('topbar-user').style.display = 'flex';
   document.getElementById('topbar-subtitle').style.display = 'none';
   document.getElementById('topbar-email').textContent = email;
-  // Toon wachtwoord-knop alleen voor admin
-  const wwBtn = document.getElementById('ww-knop');
-  if (wwBtn) {
-    const isAdmin = ADMIN_EMAIL === '' || email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-    wwBtn.style.display = isAdmin ? '' : 'none';
-  }
+  // Laad rol van gebruiker (bepaalt rechten)
+  laadRolVanGebruiker(email);
   // Start the app
   startApp();
 }
