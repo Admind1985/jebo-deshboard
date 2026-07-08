@@ -819,8 +819,8 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
     <div class="login-fout" id="gebruiker-fout"></div>
     <div class="form-grid single">
       <div class="field">
-        <label>E-mailadres</label>
-        <input type="email" id="gu-email" placeholder="naam@bedrijf.nl">
+        <label>Gebruikersnaam</label>
+        <input type="text" id="gu-email" placeholder="bijv. jan">
       </div>
       <div class="field">
         <label>Wachtwoord <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(tijdelijk, gebruiker kan dit wijzigen)</span></label>
@@ -1495,13 +1495,25 @@ function laadRolVanGebruiker(email) {
     pasDashboardAanOpRol(rol);
     return;
   }
-  sbFetch('gebruikers', 'GET', null, '?email=eq.' + encodeURIComponent(email) + '&select=rol')
+  // Gebruik echte email voor lookup (opgeslagen in dataset)
+  var zoekEmail = email;
+  sbFetch('gebruikers', 'GET', null, '?email=eq.' + encodeURIComponent(zoekEmail) + '&select=rol')
     .then(function(data) {
       var rol;
       if (data && data.length > 0) { rol = data[0].rol; }
       else { rol = (ADMIN_EMAIL && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'beheerder'; }
       pasDashboardAanOpRol(rol);
     }).catch(function() { pasDashboardAanOpRol('beheerder'); });
+}
+
+function wijzigRol(email, nieuweRol) {
+  sbFetch('gebruikers', 'POST', [{ email: email, rol: nieuweRol }], '?on_conflict=email')
+    .then(function() {
+      toon('Rol van ' + email + ' gewijzigd naar ' + nieuweRol);
+      renderAccounts();
+    }).catch(function() {
+      toon('Kon rol niet opslaan');
+    });
 }
 
 function renderAccounts() {
@@ -1512,13 +1524,14 @@ function renderAccounts() {
     return;
   }
   tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Laden...</td></tr>';
-  sbFetch('gebruikers', 'GET', null, '?order=created_at')
+  sbFetch('gebruikers', 'GET', null, '?order=created_at&select=email,rol,gebruikersnaam,created_at')
     .then(function(data) {
       var zelfEmail = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
       var rolLabel = { admin: 'Admin', beheerder: 'Beheerder', medewerker: 'Medewerker' };
       var rolKleur = { admin: 'var(--red)', beheerder: 'var(--blue)', medewerker: 'var(--green)' };
       // Verberg admin accounts uit de lijst
-      var zelfEmail2 = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
+      var topbarEl = document.getElementById('topbar-email');
+      var zelfEmail2 = topbarEl ? (topbarEl.dataset.email || gebruikersnaamNaarEmail(topbarEl.textContent)).toLowerCase() : '';
       var zichtbaar = (data || []).filter(function(u) {
         return (u.rol||'').toLowerCase() !== 'admin' && u.email.toLowerCase() !== zelfEmail2;
       });
@@ -1527,15 +1540,27 @@ function renderAccounts() {
         return;
       }
       tbody.innerHTML = zichtbaar.map(function(u) {
+        var rolOpties = ['beheerder','medewerker'].map(function(r) {
+          return '<option value="' + r + '"' + (r === u.rol ? ' selected' : '') + '>' + rolLabel[r] + '</option>';
+        }).join('');
         return '<tr>' +
-          '<td>' + u.email + '</td>' +
-          '<td><span class="badge" style="background:' + (rolKleur[u.rol]||'var(--gray)') + '22;color:' + (rolKleur[u.rol]||'var(--gray)') + '">' + (rolLabel[u.rol]||u.rol) + '</span></td>' +
+          '<td>' + (u.gebruikersnaam || emailNaarGebruikersnaam(u.email)) + '</td>' +
+          '<td><select class="rol-select js-rol-select" data-email="' + u.email + '" style="font-family:inherit;font-size:12px;padding:4px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">' + rolOpties + '</select></td>' +
           '<td><span style="font-size:12px;color:var(--text-muted)">Actief</span></td>' +
-          '<td><button class="icon-btn danger" data-email="' + u.email + '" title="Verwijderen">&#128465;</button></td>' +
+          '<td style="display:flex;gap:4px">' +
+            '<button class="btn btn-secondary btn-sm js-rol-opslaan" data-email="' + u.email + '" style="font-size:11px;padding:3px 8px">&#10003; Opslaan</button>' +
+            '<button class="icon-btn danger js-verwijder" data-email="' + u.email + '" title="Verwijderen">&#128465;</button>' +
+          '</td>' +
           '</tr>';
       }).join('');
-      tbody.querySelectorAll('.icon-btn.danger[data-email]').forEach(function(btn) {
+      tbody.querySelectorAll('.js-verwijder').forEach(function(btn) {
         btn.addEventListener('click', function() { verwijderGebruiker(btn.dataset.email); });
+      });
+      tbody.querySelectorAll('.js-rol-opslaan').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var sel = tbody.querySelector('.js-rol-select[data-email="' + btn.dataset.email + '"]');
+          if (sel) wijzigRol(btn.dataset.email, sel.value);
+        });
       });
     }).catch(function() {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Kon gebruikers niet laden. Maak eerst de tabel aan in Supabase.</td></tr>';
@@ -1567,17 +1592,19 @@ async function maakGebruikerAan() {
   fout.classList.remove('show'); succes.style.display = 'none';
   if (!email) { fout.textContent = 'Vul een e-mailadres in.'; fout.classList.add('show'); return; }
   if (ww.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.'; fout.classList.add('show'); return; }
+  // Converteer gebruikersnaam naar email
+  var volledigEmail = gebruikersnaamNaarEmail(email);
   var res = await fetch(SUPABASE_AUTH + '/signup', {
     method: 'POST',
     headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email, password: ww })
+    body: JSON.stringify({ email: volledigEmail, password: ww })
   });
   if (!res.ok) {
     var err = await res.json();
     fout.textContent = err.error_description || err.msg || 'Kon gebruiker niet aanmaken.';
     fout.classList.add('show'); return;
   }
-  await sbFetch('gebruikers', 'POST', [{ email: email, rol: rol }], '?on_conflict=email');
+  await sbFetch('gebruikers', 'POST', [{ email: volledigEmail, rol: rol, gebruikersnaam: email }], '?on_conflict=email');
   succes.style.display = 'block';
   document.getElementById('gu-email').value = '';
   document.getElementById('gu-ww').value = '';
@@ -2066,24 +2093,41 @@ async function authFetch(pad, methode='GET', body=null) {
   return { ok: res.ok, data: await res.json() };
 }
 
+
+function gebruikersnaamNaarEmail(invoer) {
+  invoer = invoer.trim().toLowerCase();
+  // Als het al een @ bevat (admin logt in met echt email), gebruik as-is
+  if (invoer.indexOf('@') !== -1) return invoer;
+  // Anders: voeg domein toe
+  return invoer + '@jebodb.nl';
+}
+
+function emailNaarGebruikersnaam(email) {
+  if (!email) return email;
+  if (email.endsWith('@jebodb.nl')) return email.replace('@jebodb.nl', '');
+  return email; // echte emails tonen we gewoon
+}
+
 async function doeLogin() {
-  const email = document.getElementById('login-email').value.trim();
+  const invoer = document.getElementById('login-email').value.trim();
   const ww = document.getElementById('login-ww').value;
   const fout = document.getElementById('login-fout');
   const spinner = document.getElementById('login-spinner');
   fout.classList.remove('show');
-  if (!email || !ww) { fout.textContent = 'Vul e-mail en wachtwoord in.'; fout.classList.add('show'); return; }
+  if (!invoer || !ww) { fout.textContent = 'Vul gebruikersnaam en wachtwoord in.'; fout.classList.add('show'); return; }
+  const email = gebruikersnaamNaarEmail(invoer);
   spinner.style.display = 'block';
   const { ok, data } = await authFetch('/token?grant_type=password', 'POST', { email, password: ww });
   spinner.style.display = 'none';
   if (!ok) {
-    fout.textContent = 'Verkeerd e-mailadres of wachtwoord.';
+    fout.textContent = 'Verkeerde gebruikersnaam of wachtwoord.';
     fout.classList.add('show');
     return;
   }
   huidigGebruiker = data;
   localStorage.setItem('jebo_token', JSON.stringify(data));
-  toonApp(email);
+  // Toon gebruikersnaam ipv email in topbar
+  toonApp(email, emailNaarGebruikersnaam(email));
 }
 
 async function doeReset() {
@@ -2107,11 +2151,13 @@ function doeLogout() {
   document.getElementById('login-ww').value = '';
 }
 
-function toonApp(email) {
+function toonApp(email, weergaveNaam) {
   document.getElementById('login-overlay').classList.remove('actief');
   document.getElementById('topbar-user').style.display = 'flex';
   document.getElementById('topbar-subtitle').style.display = 'none';
-  document.getElementById('topbar-email').textContent = email;
+  // Toon gebruikersnaam in topbar, sla echte email op voor rol-lookup
+  document.getElementById('topbar-email').textContent = weergaveNaam || emailNaarGebruikersnaam(email);
+  document.getElementById('topbar-email').dataset.email = email; // echte email voor intern gebruik
   // Laad rol van gebruiker (bepaalt rechten)
   laadRolVanGebruiker(email);
   // Start the app
@@ -2152,7 +2198,7 @@ async function checkSessie() {
       if (res.ok) {
         const user = await res.json();
         huidigGebruiker = opgeslagen;
-        toonApp(user.email);
+        toonApp(user.email, emailNaarGebruikersnaam(user.email));
         return;
       }
     }
