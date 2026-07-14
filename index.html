@@ -1470,6 +1470,11 @@ function pasDashboardAanOpRol(rol) {
     btn.style.display = isBeheerder ? '' : 'none';
   });
 
+  // Gebruiker uitnodigen knop - verberg voor medewerker
+  document.querySelectorAll('button[onclick="openGebruikerModal()"]').forEach(function(btn){
+    btn.style.display = isBeheerder ? '' : 'none';
+  });
+
   // Bewerk/verwijder knoppen in tabel - verberg voor medewerker
   // (wordt ook in renderTabel afgehandeld)
   document.querySelectorAll('.acties.beheerder-only').forEach(function(el){
@@ -1486,6 +1491,14 @@ function pasDashboardAanOpRol(rol) {
   // Herrender tabel zodat acties-kolom correct is
   if (document.getElementById('tab-bestellingen').classList.contains('active')) {
     sorteer(sortVeld);
+  }
+
+  // Medewerker: zorg dat hij op Bestellingen uitkomt, niet op Accounts
+  if (!isBeheerder) {
+    const actieveTab = document.querySelector('.nav-tab.active');
+    if (!actieveTab || actieveTab.dataset.tab === 'accounts') {
+      switchTab('bestellingen', document.querySelector('[data-tab="bestellingen"]'));
+    }
   }
 }
 
@@ -1592,6 +1605,7 @@ function renderAccounts() {
 }
 
 function openGebruikerModal() {
+  if (huidigeRol === 'medewerker') { toon('Geen toegang: u mag geen gebruikers uitnodigen'); return; }
   document.getElementById('gu-email').value = '';
   const wwEl = document.getElementById('gu-ww');
   if (wwEl) wwEl.value = '';
@@ -1609,6 +1623,7 @@ function updateRolUitleg() {
 }
 
 async function maakGebruikerAan() {
+  if (huidigeRol === 'medewerker') { toon('Geen toegang'); return; }
   var gebruikersnaam = document.getElementById('gu-email').value.trim();
   var rol = document.getElementById('gu-rol').value;
   var fout = document.getElementById('gebruiker-fout');
