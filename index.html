@@ -1326,7 +1326,7 @@ function renderTabel(){
         ${b.status==='In productie'
           ? `<select class="productie-select" data-id="${b.id}" onchange="wijzigProductieStap(this)">
               <option value="">— Kies stap —</option>
-              ${['Afkortzaag','CnC Machine','Opsluitbank','Af montage'].map(st=>`<option value="${st}"${st===b.productieStap?' selected':''}>${st}</option>`).join('')}
+              ${['Afkortzaag','CnC Machine','Opsluitbank','Afmontage'].map(st=>`<option value="${st}"${st===b.productieStap?' selected':''}>${st}</option>`).join('')}
             </select>`
           : '<span style="font-size:12px;color:var(--text-subtle)">&#8212;</span>'
         }
@@ -1689,7 +1689,7 @@ function wijzigStatusTabel(select){
     const prodCel=rij.querySelector('td:nth-child(7)');
     if(prodCel){
       if(nieuweStatus==='In productie'){
-        const stappen=['Afkortzaag','CnC Machine','Opsluitbank','Af montage'];
+        const stappen=['Afkortzaag','CnC Machine','Opsluitbank','Afmontage'];
         const opties='<option value="">— Kies stap —</option>'+stappen.map(st=>'<option value="'+st+'"'+(st===b.productieStap?' selected':'')+'>'+st+'</option>').join('');
         prodCel.innerHTML='<select class="productie-select" data-id="'+id+'" onchange="wijzigProductieStap(this)">'+opties+'</select>';
       } else {
