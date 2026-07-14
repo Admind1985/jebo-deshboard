@@ -1548,11 +1548,9 @@ function renderAccounts() {
       var zelfEmail = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
       var rolLabel = { admin: 'Admin', beheerder: 'Beheerder', medewerker: 'Medewerker' };
       var rolKleur = { admin: 'var(--red)', beheerder: 'var(--blue)', medewerker: 'var(--green)' };
-      // Verberg admin accounts uit de lijst
-      var topbarEl = document.getElementById('topbar-email');
-      var zelfEmail2 = topbarEl ? (topbarEl.dataset.email || gebruikersnaamNaarEmail(topbarEl.textContent)).toLowerCase() : '';
+      // Verberg alleen admin accounts, beheerder ziet zichzelf wél
       var zichtbaar = (data || []).filter(function(u) {
-        return (u.rol||'').toLowerCase() !== 'admin' && u.email.toLowerCase() !== zelfEmail2;
+        return (u.rol||'').toLowerCase() !== 'admin';
       });
       if (!zichtbaar.length) {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Nog geen gebruikers toegevoegd</td></tr>';
