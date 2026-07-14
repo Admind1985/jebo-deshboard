@@ -822,10 +822,7 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
         <label>Gebruikersnaam</label>
         <input type="text" id="gu-email" placeholder="bijv. jan">
       </div>
-      <div class="field">
-        <label>Wachtwoord <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(tijdelijk, gebruiker kan dit wijzigen)</span></label>
-        <input type="password" id="gu-ww" placeholder="Minimaal 6 tekens">
-      </div>
+
       <div class="field">
         <label>Rol</label>
         <select id="gu-rol" onchange="updateRolUitleg()">
@@ -1457,9 +1454,9 @@ function pasDashboardAanOpRol(rol) {
   const isBeheerder = rol === 'admin' || rol === 'beheerder';
   const isAdmin = rol === 'admin';
 
-  // Accounts tab - alleen admin
+  // Accounts tab - admin en beheerder
   const accountsTab = document.getElementById('accounts-tab');
-  if (accountsTab) accountsTab.style.display = isAdmin ? '' : 'none';
+  if (accountsTab) accountsTab.style.display = isBeheerder ? '' : 'none';
 
   // Wachtwoord knop - alleen admin
   const wwKnop = document.getElementById('ww-knop');
@@ -1506,6 +1503,28 @@ function laadRolVanGebruiker(email) {
     }).catch(function() { pasDashboardAanOpRol('beheerder'); });
 }
 
+async function stuurResetLink(email, naam) {
+  bevestig(
+    'Wachtwoord reset sturen?',
+    'Stuur een reset-link naar ' + email + ' voor gebruiker "' + naam + '"?',
+    async function() {
+      // Supabase password recovery endpoint
+      var res = await fetch(SUPABASE_AUTH + '/recover', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      });
+      if (res.ok) {
+        toon('Reset-link verstuurd naar ' + email);
+      } else {
+        var err = await res.json();
+        toon('Fout: ' + (err.error_description || err.msg || 'Kon reset-link niet sturen'));
+      }
+    },
+    'Verstuur'
+  );
+}
+
 function wijzigRol(email, nieuweRol) {
   sbFetch('gebruikers', 'POST', [{ email: email, rol: nieuweRol }], '?on_conflict=email')
     .then(function() {
@@ -1547,8 +1566,9 @@ function renderAccounts() {
           '<td>' + (u.gebruikersnaam || emailNaarGebruikersnaam(u.email)) + '</td>' +
           '<td><select class="rol-select js-rol-select" data-email="' + u.email + '" style="font-family:inherit;font-size:12px;padding:4px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">' + rolOpties + '</select></td>' +
           '<td><span style="font-size:12px;color:var(--text-muted)">Actief</span></td>' +
-          '<td style="display:flex;gap:4px">' +
+          '<td style="display:flex;gap:4px;flex-wrap:wrap">' +
             '<button class="btn btn-secondary btn-sm js-rol-opslaan" data-email="' + u.email + '" style="font-size:11px;padding:3px 8px">&#10003; Opslaan</button>' +
+            '<button class="btn btn-secondary btn-sm js-reset-ww" data-email="' + u.email + '" data-naam="' + (u.gebruikersnaam||u.email) + '" style="font-size:11px;padding:3px 8px" title="Stuur wachtwoord reset link">&#128274; Reset</button>' +
             '<button class="icon-btn danger js-verwijder" data-email="' + u.email + '" title="Verwijderen">&#128465;</button>' +
           '</td>' +
           '</tr>';
@@ -1561,6 +1581,9 @@ function renderAccounts() {
           var sel = tbody.querySelector('.js-rol-select[data-email="' + btn.dataset.email + '"]');
           if (sel) wijzigRol(btn.dataset.email, sel.value);
         });
+      });
+      tbody.querySelectorAll('.js-reset-ww').forEach(function(btn) {
+        btn.addEventListener('click', function() { stuurResetLink(btn.dataset.email, btn.dataset.naam); });
       });
     }).catch(function() {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Kon gebruikers niet laden. Maak eerst de tabel aan in Supabase.</td></tr>';
@@ -1584,32 +1607,36 @@ function updateRolUitleg() {
 }
 
 async function maakGebruikerAan() {
-  var email = document.getElementById('gu-email').value.trim();
-  var ww = document.getElementById('gu-ww').value;
+  var gebruikersnaam = document.getElementById('gu-email').value.trim();
   var rol = document.getElementById('gu-rol').value;
   var fout = document.getElementById('gebruiker-fout');
   var succes = document.getElementById('gebruiker-succes');
   fout.classList.remove('show'); succes.style.display = 'none';
-  if (!email) { fout.textContent = 'Vul een e-mailadres in.'; fout.classList.add('show'); return; }
-  if (ww.length < 6) { fout.textContent = 'Wachtwoord moet minimaal 6 tekens zijn.'; fout.classList.add('show'); return; }
-  // Converteer gebruikersnaam naar email
-  var volledigEmail = gebruikersnaamNaarEmail(email);
-  var res = await fetch(SUPABASE_AUTH + '/signup', {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: volledigEmail, password: ww })
-  });
-  if (!res.ok) {
-    var err = await res.json();
-    fout.textContent = err.error_description || err.msg || 'Kon gebruiker niet aanmaken.';
-    fout.classList.add('show'); return;
+  if (!gebruikersnaam) { fout.textContent = 'Vul een gebruikersnaam in.'; fout.classList.add('show'); return; }
+
+  var volledigEmail = gebruikersnaamNaarEmail(gebruikersnaam);
+
+  // Sla op in gebruikers tabel (de Supabase auth-gebruiker moet apart aangemaakt worden)
+  var result = await sbFetch('gebruikers', 'POST', [{ email: volledigEmail, rol: rol, gebruikersnaam: gebruikersnaam }], '?on_conflict=email');
+
+  if (result !== null) {
+    // Toon SQL instructie voor de admin
+    var sql = 'Maak de gebruiker ook aan in Supabase:\n\nAuthentication → Users → Add user\nEmail: ' + volledigEmail + '\nVink \'Auto Confirm User\' aan';
+    succes.innerHTML = '&#10003; Gebruiker <b>' + gebruikersnaam + '</b> opgeslagen als ' + rol + '.<br><br>' +
+      '<div style="background:var(--surface-alt);border-radius:6px;padding:8px;font-size:11px;color:var(--text-muted);margin-top:4px;text-align:left">' +
+      '<b>Laatste stap:</b> Maak ook een account aan in Supabase:<br>' +
+      'Authentication → Users → Add user<br>' +
+      'Email: <code style="background:#eee;padding:1px 4px;border-radius:3px">' + volledigEmail + '</code><br>' +
+      'Vink <b>Auto Confirm User</b> aan' +
+      '</div>';
+    succes.style.display = 'block';
+    document.getElementById('gu-email').value = '';
+    renderAccounts();
+    toon('Gebruiker ' + gebruikersnaam + ' opgeslagen');
+  } else {
+    fout.textContent = 'Kon gebruiker niet opslaan. Controleer de Supabase verbinding.';
+    fout.classList.add('show');
   }
-  await sbFetch('gebruikers', 'POST', [{ email: volledigEmail, rol: rol, gebruikersnaam: email }], '?on_conflict=email');
-  succes.style.display = 'block';
-  document.getElementById('gu-email').value = '';
-  document.getElementById('gu-ww').value = '';
-  setTimeout(function() { sluitGebruikerModal(); renderAccounts(); }, 1500);
-  toon('Gebruiker ' + email + ' aangemaakt als ' + rol);
 }
 
 function verwijderGebruiker(email) {
@@ -2099,12 +2126,12 @@ function gebruikersnaamNaarEmail(invoer) {
   // Als het al een @ bevat (admin logt in met echt email), gebruik as-is
   if (invoer.indexOf('@') !== -1) return invoer;
   // Anders: voeg domein toe
-  return invoer + '@jebodb.nl';
+  return invoer + '@jebo.app';
 }
 
 function emailNaarGebruikersnaam(email) {
   if (!email) return email;
-  if (email.endsWith('@jebodb.nl')) return email.replace('@jebodb.nl', '');
+  if (email.endsWith('@jebo.app')) return email.replace('@jebo.app', '');
   return email; // echte emails tonen we gewoon
 }
 
