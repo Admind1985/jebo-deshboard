@@ -1593,7 +1593,8 @@ function renderAccounts() {
 
 function openGebruikerModal() {
   document.getElementById('gu-email').value = '';
-  document.getElementById('gu-ww').value = '';
+  const wwEl = document.getElementById('gu-ww');
+  if (wwEl) wwEl.value = '';
   document.getElementById('gu-rol').value = 'beheerder';
   document.getElementById('gebruiker-fout').classList.remove('show');
   document.getElementById('gebruiker-succes').style.display = 'none';
