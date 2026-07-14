@@ -1493,12 +1493,9 @@ function pasDashboardAanOpRol(rol) {
     sorteer(sortVeld);
   }
 
-  // Medewerker: zorg dat hij op Bestellingen uitkomt, niet op Accounts
-  if (!isBeheerder) {
-    const actieveTab = document.querySelector('.nav-tab.active');
-    if (!actieveTab || actieveTab.dataset.tab === 'accounts') {
-      switchTab('bestellingen', document.querySelector('[data-tab="bestellingen"]'));
-    }
+  // Iedereen behalve admin: start op Bestellingen tab
+  if (!isAdmin) {
+    switchTab('bestellingen', document.querySelector('[data-tab="bestellingen"]'));
   }
 }
 
