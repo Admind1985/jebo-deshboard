@@ -1562,7 +1562,7 @@ function renderAccounts() {
     return;
   }
   tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Laden...</td></tr>';
-  sbFetch('gebruikers', 'GET', null, '?order=created_at&select=email,rol,gebruikersnaam,created_at')
+  sbFetch('gebruikers', 'GET', null, '?order=created_at&select=email,rol,gebruikersnaam,redirect_email,created_at')
     .then(function(data) {
       var zelfEmail = document.getElementById('topbar-email') ? document.getElementById('topbar-email').textContent.toLowerCase() : '';
       var rolLabel = { admin: 'Admin', beheerder: 'Beheerder', medewerker: 'Medewerker' };
@@ -1580,7 +1580,7 @@ function renderAccounts() {
           return '<option value="' + r + '"' + (r === u.rol ? ' selected' : '') + '>' + rolLabel[r] + '</option>';
         }).join('');
         return '<tr>' +
-          '<td>' + (u.gebruikersnaam || emailNaarGebruikersnaam(u.email)) + '</td>' +
+          '<td>' + (u.gebruikersnaam || emailNaarGebruikersnaam(u.email || '')) + '<br><span style="font-size:10px;color:var(--text-subtle)">' + u.email + '</span></td>' +
           '<td><select class="rol-select js-rol-select" data-email="' + u.email + '" style="font-family:inherit;font-size:12px;padding:4px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">' + rolOpties + '</select></td>' +
           '<td><span style="font-size:12px;color:var(--text-muted)">Actief</span></td>' +
           '<td style="display:flex;gap:4px;flex-wrap:wrap">' +
@@ -1673,7 +1673,8 @@ async function maakGebruikerAan() {
   document.getElementById('gu-email').value = '';
   if (document.getElementById('gu-echte-email')) document.getElementById('gu-echte-email').value = '';
   if (document.getElementById('gu-tijdelijk-ww')) document.getElementById('gu-tijdelijk-ww').value = '';
-  renderAccounts();
+  // Wacht even zodat Supabase de data heeft opgeslagen
+  setTimeout(function() { renderAccounts(); }, 800);
   toon('Gebruiker ' + gebruikersnaam + ' aangemaakt');
 }
 
