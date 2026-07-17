@@ -1526,17 +1526,21 @@ async function stuurResetLink(email, naam) {
     'Wachtwoord reset sturen?',
     'Stuur een reset-link naar ' + email + ' voor gebruiker "' + naam + '"?',
     async function() {
-      // Supabase password recovery endpoint
-      var res = await fetch(SUPABASE_AUTH + '/recover', {
+      var token = huidigGebruiker ? huidigGebruiker.access_token : '';
+      var res = await fetch(SUPABASE_URL + '/functions/v1/maak-gebruiker', {
         method: 'POST',
-        headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email })
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+          'apikey': SUPABASE_KEY
+        },
+        body: JSON.stringify({ actie: 'reset', resetEmail: email })
       });
-      if (res.ok) {
+      var data = await res.json().catch(function(){return{};});
+      if (res.ok && data.success) {
         toon('Reset-link verstuurd naar ' + email);
       } else {
-        var err = await res.json();
-        toon('Fout: ' + (err.error_description || err.msg || 'Kon reset-link niet sturen'));
+        toon('Fout: ' + (data.error || 'Kon reset-link niet sturen'));
       }
     },
     'Verstuur'
