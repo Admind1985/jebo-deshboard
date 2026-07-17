@@ -823,8 +823,12 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
         <input type="text" id="gu-email" placeholder="bijv. jan">
       </div>
       <div class="field">
-        <label>E-mailadres <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(voor uitnodigingsmail)</span></label>
+        <label>E-mailadres <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(echt e-mailadres van gebruiker)</span></label>
         <input type="email" id="gu-echte-email" placeholder="jan@bedrijf.nl">
+      </div>
+      <div class="field">
+        <label>Tijdelijk wachtwoord <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(geef mondeling door)</span></label>
+        <input type="text" id="gu-tijdelijk-ww" placeholder="Minimaal 6 tekens" autocomplete="off">
       </div>
 
       <div class="field">
@@ -842,9 +846,7 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
         </div>
       </div>
     </div>
-    <div id="gebruiker-succes" style="display:none;background:var(--green-light);color:var(--green);font-size:12px;padding:8px 12px;border-radius:var(--radius);margin-top:8px">
-      &#10003; Gebruiker aangemaakt! Ze kunnen nu inloggen.
-    </div>
+    <div id="gebruiker-succes" style="display:none;background:var(--green-light);color:var(--green);font-size:12px;padding:8px 12px;border-radius:var(--radius);margin-top:8px"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="sluitGebruikerModal()">Annuleren</button>
       <button class="btn btn-primary" onclick="maakGebruikerAan()">&#10003; Aanmaken</button>
@@ -1511,7 +1513,7 @@ function laadRolVanGebruiker(email) {
   }
   // Gebruik echte email voor lookup (opgeslagen in dataset)
   var zoekEmail = email;
-  sbFetch('gebruikers', 'GET', null, '?email=eq.' + encodeURIComponent(zoekEmail) + '&select=rol')
+  sbFetch('gebruikers', 'GET', null, '?or=(email.eq.' + encodeURIComponent(zoekEmail) + ',redirect_email.eq.' + encodeURIComponent(zoekEmail) + ')&select=rol&limit=1')
     .then(function(data) {
       var rol;
       if (data && data.length > 0) { rol = data[0].rol; }
@@ -1627,44 +1629,55 @@ async function maakGebruikerAan() {
   if (huidigeRol === 'medewerker') { toon('Geen toegang'); return; }
   var gebruikersnaam = document.getElementById('gu-email').value.trim();
   var echteEmail = document.getElementById('gu-echte-email') ? document.getElementById('gu-echte-email').value.trim() : '';
+  var tijdelijkWw = document.getElementById('gu-tijdelijk-ww') ? document.getElementById('gu-tijdelijk-ww').value.trim() : '';
   var rol = document.getElementById('gu-rol').value;
   var fout = document.getElementById('gebruiker-fout');
   var succes = document.getElementById('gebruiker-succes');
   fout.classList.remove('show'); succes.style.display = 'none';
   if (!gebruikersnaam) { fout.textContent = 'Vul een gebruikersnaam in.'; fout.classList.add('show'); return; }
-  if (!echteEmail) { fout.textContent = 'Vul een e-mailadres in voor de uitnodigingsmail.'; fout.classList.add('show'); return; }
+  if (!echteEmail) { fout.textContent = 'Vul een e-mailadres in.'; fout.classList.add('show'); return; }
+  if (!tijdelijkWw || tijdelijkWw.length < 6) { fout.textContent = 'Vul een tijdelijk wachtwoord in (minimaal 6 tekens).'; fout.classList.add('show'); return; }
 
-  var volledigEmail = gebruikersnaamNaarEmail(gebruikersnaam);
-
-  // Stuur uitnodigingsmail via Supabase /invite endpoint
-  var inviteRes = await fetch(SUPABASE_URL + '/auth/v1/invite', {
+  // Stap 1: Maak gebruiker aan via signup met tijdelijk wachtwoord
+  var signupRes = await fetch(SUPABASE_URL + '/auth/v1/signup', {
     method: 'POST',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ email: volledigEmail })
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: echteEmail, password: tijdelijkWw })
+  });
+  var signupData = await signupRes.json().catch(function(){return{};});
+  var aangemaakt = signupRes.ok || signupRes.status === 400; // 400 = al bestaat
+
+  if (!aangemaakt) {
+    fout.textContent = 'Fout bij aanmaken: ' + (signupData.error_description || signupData.msg || signupData.error || 'Rate limit - probeer over 1 minuut opnieuw.');
+    fout.classList.add('show'); return;
+  }
+
+  // Stap 2: Stuur wachtwoord-reset mail zodat gebruiker eigen wachtwoord instelt
+  await fetch(SUPABASE_URL + '/auth/v1/recover', {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: echteEmail })
   });
 
-  var inviteOk = inviteRes.ok || inviteRes.status === 422; // 422 = already invited, still ok
+  // Stap 3: Sla op in gebruikers tabel
+  await sbFetch('gebruikers', 'POST', [{
+    email: echteEmail,
+    rol: rol,
+    gebruikersnaam: gebruikersnaam,
+    redirect_email: echteEmail
+  }], '?on_conflict=email');
 
-  // Sla ook op in gebruikers tabel
-  await sbFetch('gebruikers', 'POST', [{ email: volledigEmail, rol: rol, gebruikersnaam: gebruikersnaam, contact_email: echteEmail }], '?on_conflict=email');
-
-  if (inviteOk) {
-    succes.innerHTML = '&#10003; Gebruiker <b>' + gebruikersnaam + '</b> aangemaakt als ' + rol + '.<br>' +
-      '<span style="font-size:12px;color:var(--text-muted)">De gebruiker kan inloggen met gebruikersnaam <b>' + gebruikersnaam + '</b> na het instellen van een wachtwoord via de uitnodigingslink.</span>';
-    succes.style.display = 'block';
-    document.getElementById('gu-email').value = '';
-    if (document.getElementById('gu-echte-email')) document.getElementById('gu-echte-email').value = '';
-    renderAccounts();
-    setTimeout(function() { sluitGebruikerModal(); }, 2500);
-    toon('Gebruiker ' + gebruikersnaam + ' aangemaakt');
-  } else {
-    var err = await inviteRes.json().catch(function(){return{};});
-    fout.textContent = 'Fout: ' + (err.error_description || err.msg || err.error || 'Kon uitnodiging niet versturen. Controleer Supabase instellingen.');
-    fout.classList.add('show');
-  }
+  succes.innerHTML = '&#10003; Gebruiker <b>' + gebruikersnaam + '</b> aangemaakt als ' + rol + '.<br>' +
+    '<div style="background:var(--surface-alt);border-radius:6px;padding:10px;font-size:12px;margin-top:8px;color:var(--text-muted)">' +
+    '<b>' + gebruikersnaam + '</b> ontvangt een e-mail op <b>' + echteEmail + '</b><br>om een wachtwoord in te stellen.<br><br>' +
+    'Inloggen gaat met gebruikersnaam: <b>' + gebruikersnaam + '</b>' +
+    '</div>';
+  succes.style.display = 'block';
+  document.getElementById('gu-email').value = '';
+  if (document.getElementById('gu-echte-email')) document.getElementById('gu-echte-email').value = '';
+  if (document.getElementById('gu-tijdelijk-ww')) document.getElementById('gu-tijdelijk-ww').value = '';
+  renderAccounts();
+  toon('Gebruiker ' + gebruikersnaam + ' aangemaakt');
 }
 
 function verwijderGebruiker(email) {
@@ -2170,8 +2183,18 @@ async function doeLogin() {
   const spinner = document.getElementById('login-spinner');
   fout.classList.remove('show');
   if (!invoer || !ww) { fout.textContent = 'Vul gebruikersnaam en wachtwoord in.'; fout.classList.add('show'); return; }
-  const email = gebruikersnaamNaarEmail(invoer);
   spinner.style.display = 'block';
+  // Zoek het echte emailadres op via de gebruikers tabel
+  var loginEmail = gebruikersnaamNaarEmail(invoer);
+  if (GEBRUIK_SUPABASE && invoer.indexOf('@') === -1) {
+    try {
+      var gebruikerData = await sbFetch('gebruikers', 'GET', null, '?gebruikersnaam=eq.' + encodeURIComponent(invoer) + '&select=email,redirect_email&limit=1');
+      if (gebruikerData && gebruikerData.length > 0) {
+        loginEmail = gebruikerData[0].redirect_email || gebruikerData[0].email || loginEmail;
+      }
+    } catch(e) { /* gebruik standaard email */ }
+  }
+  const email = loginEmail;
   const { ok, data } = await authFetch('/token?grant_type=password', 'POST', { email, password: ww });
   spinner.style.display = 'none';
   if (!ok) {
