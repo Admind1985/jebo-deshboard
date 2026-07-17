@@ -543,10 +543,11 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
   <div class="card tabel-scroll">
     <table>
       <thead><tr>
-        <th>E-mailadres</th>
+        <th>Gebruiker</th>
+        <th style="width:180px">Nieuw wachtwoord</th>
         <th style="width:160px">Rol</th>
         <th style="width:120px">Status</th>
-        <th style="width:100px">Acties</th>
+        <th style="width:150px">Acties</th>
       </tr></thead>
       <tbody id="accounts-body"><tr class="empty-row"><td colspan="4">Laden...</td></tr></tbody>
     </table>
@@ -1521,6 +1522,33 @@ function laadRolVanGebruiker(email) {
     }).catch(function() { pasDashboardAanOpRol('medewerker'); });
 }
 
+async function stelWachtwoordIn(email, naam, nieuwWw, inputEl) {
+  bevestig(
+    'Wachtwoord wijzigen?',
+    'Stel een nieuw wachtwoord in voor "' + naam + '"?',
+    async function() {
+      var token = huidigGebruiker ? huidigGebruiker.access_token : '';
+      var res = await fetch(SUPABASE_URL + '/functions/v1/maak-gebruiker', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+          'apikey': SUPABASE_KEY
+        },
+        body: JSON.stringify({ actie: 'wachtwoord', resetEmail: email, nieuwWachtwoord: nieuwWw })
+      });
+      var data = await res.json().catch(function(){return{};});
+      if (res.ok && data.success) {
+        if (inputEl) inputEl.value = '';
+        toon('Wachtwoord van ' + naam + ' gewijzigd');
+      } else {
+        toon('Fout: ' + (data.error || 'Kon wachtwoord niet wijzigen'));
+      }
+    },
+    'Wijzigen'
+  );
+}
+
 async function stuurResetLink(email, naam) {
   bevestig(
     'Wachtwoord reset sturen?',
@@ -1584,11 +1612,12 @@ function renderAccounts() {
         }).join('');
         return '<tr>' +
           '<td>' + (u.gebruikersnaam || emailNaarGebruikersnaam(u.email || '')) + '<br><span style="font-size:10px;color:var(--text-subtle)">' + u.email + '</span></td>' +
+          '<td><input type="password" class="js-nieuw-ww" data-email="' + u.email + '" placeholder="Nieuw wachtwoord" style="font-family:inherit;font-size:12px;padding:4px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);width:160px"></td>' +
           '<td><select class="rol-select js-rol-select" data-email="' + u.email + '" style="font-family:inherit;font-size:12px;padding:4px 8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer">' + rolOpties + '</select></td>' +
           '<td><span style="font-size:12px;color:var(--text-muted)">Actief</span></td>' +
           '<td style="display:flex;gap:4px;flex-wrap:wrap">' +
             '<button class="btn btn-secondary btn-sm js-rol-opslaan" data-email="' + u.email + '" style="font-size:11px;padding:3px 8px">&#10003; Opslaan</button>' +
-            '<button class="btn btn-secondary btn-sm js-reset-ww" data-email="' + u.email + '" data-naam="' + (u.gebruikersnaam||u.email) + '" style="font-size:11px;padding:3px 8px" title="Stuur wachtwoord reset link">&#128274; Reset</button>' +
+            '<button class="btn btn-secondary btn-sm js-reset-ww" data-email="' + u.email + '" data-naam="' + (u.gebruikersnaam||u.email) + '" style="font-size:11px;padding:3px 8px" title="Stel nieuw wachtwoord in">&#128274; Reset</button>' +
             '<button class="icon-btn danger js-verwijder" data-email="' + u.email + '" title="Verwijderen">&#128465;</button>' +
           '</td>' +
           '</tr>';
@@ -1603,7 +1632,16 @@ function renderAccounts() {
         });
       });
       tbody.querySelectorAll('.js-reset-ww').forEach(function(btn) {
-        btn.addEventListener('click', function() { stuurResetLink(btn.dataset.email, btn.dataset.naam); });
+        btn.addEventListener('click', function() {
+          var wwInp = tbody.querySelector('.js-nieuw-ww[data-email="' + btn.dataset.email + '"]');
+          var nieuwWw = wwInp ? wwInp.value.trim() : '';
+          if (!nieuwWw || nieuwWw.length < 6) {
+            toon('Vul eerst een nieuw wachtwoord in (minimaal 6 tekens)');
+            if (wwInp) wwInp.focus();
+            return;
+          }
+          stelWachtwoordIn(btn.dataset.email, btn.dataset.naam, nieuwWw, wwInp);
+        });
       });
     }).catch(function() {
       tbody.innerHTML = '<tr class="empty-row"><td colspan="4">Kon gebruikers niet laden. Maak eerst de tabel aan in Supabase.</td></tr>';
