@@ -1638,39 +1638,36 @@ async function maakGebruikerAan() {
   if (!echteEmail) { fout.textContent = 'Vul een e-mailadres in.'; fout.classList.add('show'); return; }
   if (!tijdelijkWw || tijdelijkWw.length < 6) { fout.textContent = 'Vul een tijdelijk wachtwoord in (minimaal 6 tekens).'; fout.classList.add('show'); return; }
 
-  // Stap 1: Maak gebruiker aan via signup met tijdelijk wachtwoord
-  var signupRes = await fetch(SUPABASE_URL + '/auth/v1/signup', {
+  // Roep Edge Function aan (service_role key staat veilig op Supabase)
+  var token = huidigGebruiker ? huidigGebruiker.access_token : '';
+  var fnRes = await fetch(SUPABASE_URL + '/functions/v1/maak-gebruiker', {
     method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: echteEmail, password: tijdelijkWw })
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token,
+      'apikey': SUPABASE_KEY
+    },
+    body: JSON.stringify({
+      gebruikersnaam: gebruikersnaam,
+      echteEmail: echteEmail,
+      tijdelijkWw: tijdelijkWw,
+      nieuweRol: rol
+    })
   });
-  var signupData = await signupRes.json().catch(function(){return{};});
-  var aangemaakt = signupRes.ok || signupRes.status === 400; // 400 = al bestaat
 
-  if (!aangemaakt) {
-    fout.textContent = 'Fout bij aanmaken: ' + (signupData.error_description || signupData.msg || signupData.error || 'Rate limit - probeer over 1 minuut opnieuw.');
+  var fnData = await fnRes.json().catch(function(){return{};});
+
+  if (!fnRes.ok) {
+    fout.textContent = 'Fout: ' + (fnData.error || 'Kon gebruiker niet aanmaken. Controleer of de Edge Function actief is.');
     fout.classList.add('show'); return;
   }
 
-  // Stap 2: Stuur wachtwoord-reset mail zodat gebruiker eigen wachtwoord instelt
-  await fetch(SUPABASE_URL + '/auth/v1/recover', {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: echteEmail })
-  });
-
-  // Stap 3: Sla op in gebruikers tabel
-  await sbFetch('gebruikers', 'POST', [{
-    email: echteEmail,
-    rol: rol,
-    gebruikersnaam: gebruikersnaam,
-    redirect_email: echteEmail
-  }], '?on_conflict=email');
-
   succes.innerHTML = '&#10003; Gebruiker <b>' + gebruikersnaam + '</b> aangemaakt als ' + rol + '.<br>' +
     '<div style="background:var(--surface-alt);border-radius:6px;padding:10px;font-size:12px;margin-top:8px;color:var(--text-muted)">' +
-    '<b>' + gebruikersnaam + '</b> ontvangt een e-mail op <b>' + echteEmail + '</b><br>om een wachtwoord in te stellen.<br><br>' +
-    'Inloggen gaat met gebruikersnaam: <b>' + gebruikersnaam + '</b>' +
+    '&#128274; Geef mondeling door aan <b>' + gebruikersnaam + '</b>:<br><br>' +
+    'Gebruikersnaam: <b>' + gebruikersnaam + '</b><br>' +
+    'Tijdelijk wachtwoord: <b>' + tijdelijkWw + '</b><br><br>' +
+    'Inloggen via: <b>' + window.location.hostname + '</b>' +
     '</div>';
   succes.style.display = 'block';
   document.getElementById('gu-email').value = '';
