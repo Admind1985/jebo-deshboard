@@ -483,7 +483,7 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
       <button class="btn btn-secondary" onclick="exporteerData()" title="Exporteer alle data als backup-bestand">&#128190; Backup</button>
       <button class="btn btn-secondary" onclick="document.getElementById('import-input').click()" title="Herstel data uit backup-bestand">&#128196; Herstel</button>
       <input type="file" id="import-input" accept=".json" style="display:none" onchange="importeerData(this)">
-      <button class="btn btn-primary" onclick="openBestelModal()" class="beheerder-only">+ Bestelling toevoegen</button>
+      <button class="btn btn-primary beheerder-only" id="btn-nieuwe-bestelling" onclick="openBestelModal()">+ Bestelling toevoegen</button>
     </div>
   </div>
   <div class="card tabel-scroll">
@@ -1460,6 +1460,7 @@ const ROL_UITLEG = {
 
 function pasDashboardAanOpRol(rol) {
   huidigeRol = rol;
+  console.log('Rol ingesteld:', rol);
   const isBeheerder = rol === 'admin' || rol === 'beheerder';
   const isAdmin = rol === 'admin';
 
@@ -1472,18 +1473,16 @@ function pasDashboardAanOpRol(rol) {
   if (wwKnop) wwKnop.style.display = isAdmin ? '' : 'none';
 
   // Bestelling toevoegen knop - verberg voor medewerker
-  document.querySelectorAll('button[onclick="openBestelModal()"]').forEach(function(btn){
-    btn.style.display = isBeheerder ? '' : 'none';
-  });
+  var btnBestelling = document.getElementById('btn-nieuwe-bestelling');
+  if (btnBestelling) btnBestelling.style.display = isBeheerder ? '' : 'none';
 
   // Gebruiker uitnodigen knop - verberg voor medewerker
   document.querySelectorAll('button[onclick="openGebruikerModal()"]').forEach(function(btn){
     btn.style.display = isBeheerder ? '' : 'none';
   });
 
-  // Bewerk/verwijder knoppen in tabel - verberg voor medewerker
-  // (wordt ook in renderTabel afgehandeld)
-  document.querySelectorAll('.acties.beheerder-only').forEach(function(el){
+  // Alle beheerder-only elementen
+  document.querySelectorAll('.beheerder-only').forEach(function(el){
     el.style.display = isBeheerder ? '' : 'none';
   });
 
@@ -1517,9 +1516,9 @@ function laadRolVanGebruiker(email) {
     .then(function(data) {
       var rol;
       if (data && data.length > 0) { rol = data[0].rol; }
-      else { rol = (ADMIN_EMAIL && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'beheerder'; }
+      else { rol = (ADMIN_EMAIL && email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'medewerker'; }
       pasDashboardAanOpRol(rol);
-    }).catch(function() { pasDashboardAanOpRol('beheerder'); });
+    }).catch(function() { pasDashboardAanOpRol('medewerker'); });
 }
 
 async function stuurResetLink(email, naam) {
