@@ -819,8 +819,12 @@ tr.spoed-rij td:first-child{border-left:3px solid #dc2626}
     <div class="login-fout" id="gebruiker-fout"></div>
     <div class="form-grid single">
       <div class="field">
-        <label>Gebruikersnaam</label>
+        <label>Gebruikersnaam <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(waarmee ingelogd wordt)</span></label>
         <input type="text" id="gu-email" placeholder="bijv. jan">
+      </div>
+      <div class="field">
+        <label>E-mailadres <span style="font-size:11px;color:var(--text-subtle);font-weight:400">(voor uitnodigingsmail)</span></label>
+        <input type="email" id="gu-echte-email" placeholder="jan@bedrijf.nl">
       </div>
 
       <div class="field">
@@ -1622,34 +1626,43 @@ function updateRolUitleg() {
 async function maakGebruikerAan() {
   if (huidigeRol === 'medewerker') { toon('Geen toegang'); return; }
   var gebruikersnaam = document.getElementById('gu-email').value.trim();
+  var echteEmail = document.getElementById('gu-echte-email') ? document.getElementById('gu-echte-email').value.trim() : '';
   var rol = document.getElementById('gu-rol').value;
   var fout = document.getElementById('gebruiker-fout');
   var succes = document.getElementById('gebruiker-succes');
   fout.classList.remove('show'); succes.style.display = 'none';
   if (!gebruikersnaam) { fout.textContent = 'Vul een gebruikersnaam in.'; fout.classList.add('show'); return; }
+  if (!echteEmail) { fout.textContent = 'Vul een e-mailadres in voor de uitnodigingsmail.'; fout.classList.add('show'); return; }
 
   var volledigEmail = gebruikersnaamNaarEmail(gebruikersnaam);
 
-  // Sla op in gebruikers tabel (de Supabase auth-gebruiker moet apart aangemaakt worden)
-  var result = await sbFetch('gebruikers', 'POST', [{ email: volledigEmail, rol: rol, gebruikersnaam: gebruikersnaam }], '?on_conflict=email');
-  console.log('Gebruiker opslaan result:', result, 'email:', volledigEmail);
+  // Stuur uitnodigingsmail via Supabase /invite endpoint
+  var inviteRes = await fetch(SUPABASE_URL + '/auth/v1/invite', {
+    method: 'POST',
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ email: volledigEmail })
+  });
 
-  if (result !== null) {
-    // Toon SQL instructie voor de admin
-    var sql = 'Maak de gebruiker ook aan in Supabase:\n\nAuthentication → Users → Add user\nEmail: ' + volledigEmail + '\nVink \'Auto Confirm User\' aan';
-    succes.innerHTML = '&#10003; Gebruiker <b>' + gebruikersnaam + '</b> opgeslagen als ' + rol + '.<br><br>' +
-      '<div style="background:var(--surface-alt);border-radius:6px;padding:8px;font-size:11px;color:var(--text-muted);margin-top:4px;text-align:left">' +
-      '<b>Laatste stap:</b> Maak ook een account aan in Supabase:<br>' +
-      'Authentication → Users → Add user<br>' +
-      'Email: <code style="background:#eee;padding:1px 4px;border-radius:3px">' + volledigEmail + '</code><br>' +
-      'Vink <b>Auto Confirm User</b> aan' +
-      '</div>';
+  var inviteOk = inviteRes.ok || inviteRes.status === 422; // 422 = already invited, still ok
+
+  // Sla ook op in gebruikers tabel
+  await sbFetch('gebruikers', 'POST', [{ email: volledigEmail, rol: rol, gebruikersnaam: gebruikersnaam, contact_email: echteEmail }], '?on_conflict=email');
+
+  if (inviteOk) {
+    succes.innerHTML = '&#10003; Gebruiker <b>' + gebruikersnaam + '</b> aangemaakt als ' + rol + '.<br>' +
+      '<span style="font-size:12px;color:var(--text-muted)">De gebruiker kan inloggen met gebruikersnaam <b>' + gebruikersnaam + '</b> na het instellen van een wachtwoord via de uitnodigingslink.</span>';
     succes.style.display = 'block';
     document.getElementById('gu-email').value = '';
+    if (document.getElementById('gu-echte-email')) document.getElementById('gu-echte-email').value = '';
     renderAccounts();
-    toon('Gebruiker ' + gebruikersnaam + ' opgeslagen');
+    setTimeout(function() { sluitGebruikerModal(); }, 2500);
+    toon('Gebruiker ' + gebruikersnaam + ' aangemaakt');
   } else {
-    fout.textContent = 'Kon gebruiker niet opslaan. Controleer de Supabase verbinding.';
+    var err = await inviteRes.json().catch(function(){return{};});
+    fout.textContent = 'Fout: ' + (err.error_description || err.msg || err.error || 'Kon uitnodiging niet versturen. Controleer Supabase instellingen.');
     fout.classList.add('show');
   }
 }
